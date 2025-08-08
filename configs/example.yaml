@@ -1,0 +1,25 @@
+aws:
+  region: "ap-southeast-2"
+  profile: null
+
+s3:
+  bucket: "your-bucket-name"
+  root_prefix: "your/root/prefix/"
+
+hashing:
+  mode: "basic"  # or "advanced"
+  resize:
+    width: 256
+    height: 256
+
+output:
+  target: "local_csv"  # local_csv | local_parquet | microsoft_fabric | aws_redshift
+  path: "outputs/hash_index"  # base path; extension chosen by target
+
+state:
+  path: "outputs/state/seen.json"
+
+duplicates:
+  threshold: 5
+  bands: 8
+
