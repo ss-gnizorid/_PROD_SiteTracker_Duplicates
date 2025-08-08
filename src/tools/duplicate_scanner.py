@@ -4,6 +4,7 @@ from typing import Dict, Iterable, List, Tuple
 import numpy as np
 import pandas as pd
 import imagehash
+from src.utils.logger import get_logger
 
 
 def _collect_hash_columns(df: pd.DataFrame) -> List[str]:
@@ -47,6 +48,7 @@ class DuplicateScanner:
     def __init__(self, distance_threshold: int = 5, num_bands: int = 8):
         self.distance_threshold = distance_threshold
         self.num_bands = num_bands
+        self._log = get_logger("duplicate_scanner")
 
     def _band_slices(self, total_bits: int) -> List[Tuple[int, int]]:
         # return list of (start, length) for bands
@@ -98,6 +100,7 @@ class DuplicateScanner:
                 for band_idx, band_key in enumerate(self._band_keys(hv, total_bits)):
                     bucket_key = (col, band_idx, band_key)
                     band_buckets.setdefault(bucket_key, []).append(idx)
+        self._log.info(f"Built {len(band_buckets)} buckets across {len(hash_cols)} hash columns")
 
         candidate_pairs: set[Tuple[int, int, str, str]] = set()
         for (_col, _band, _key), indices in band_buckets.items():
@@ -126,6 +129,7 @@ class DuplicateScanner:
                             if a == b:
                                 continue
                             candidate_pairs.add((min(a, b), max(a, b), ci, cj))
+        self._log.info(f"Candidate pairs after LSH banding: {len(candidate_pairs)}")
 
         matches: List[DuplicateMatch] = []
         # Validate candidates by true Hamming distance
@@ -155,6 +159,7 @@ class DuplicateScanner:
             return pd.DataFrame()
         out = pd.DataFrame([m.__dict__ for m in matches])
         out = out.sort_values(["distance", "image_a", "image_b"]).reset_index(drop=True)
+        self._log.info(f"Confirmed duplicate pairs within threshold: {len(out)}")
         return out
 
 

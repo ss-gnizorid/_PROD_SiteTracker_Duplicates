@@ -6,6 +6,7 @@ import pandas as pd
 
 from src.clients.aws_client import S3Client, S3Object
 from src.tools.permutation_generator import PermutationConfig, PermutationGenerator
+from src.utils.logger import get_logger
 
 
 @dataclass
@@ -30,6 +31,7 @@ class HashIndexer:
         self._s3 = s3
         self._generator = generator
         self._max_workers = max_workers
+        self._log = get_logger("hash_indexer")
 
     def _process_one(self, obj: S3Object) -> HashRecord:
         image_bytes = self._s3.stream_bytes(obj.bucket, obj.key)
@@ -41,8 +43,12 @@ class HashIndexer:
         with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
             futures = {pool.submit(self._process_one, obj): obj for obj in objects}
             for fut in as_completed(futures):
-                rec = fut.result()
-                records.append(rec)
+                try:
+                    rec = fut.result()
+                    records.append(rec)
+                except Exception as e:
+                    obj = futures[fut]
+                    self._log.warning(f"Failed to process {obj.key}: {e}")
         rows = [r.to_row() for r in records]
         df = pd.DataFrame(rows)
         # Ensure consistent column ordering: meta first then hashes

@@ -17,9 +17,12 @@ class AppConfig:
     hash_mode: Literal["basic", "advanced"]
     resize_width: int
     resize_height: int
+    max_workers: int
     output_target: OutputTarget
     output_path: Optional[Path]
     state_path: Path
+    aws_assume_role_arn: Optional[str] = None
+    aws_external_id: Optional[str] = None
     # Duplicate scanning
     duplicate_threshold: int = 5
     duplicate_bands: int = 8
@@ -47,6 +50,8 @@ def load_config_yaml(path: Path) -> AppConfig:
     # Core
     aws_region = data.get("aws", {}).get("region")
     aws_profile = data.get("aws", {}).get("profile")
+    aws_assume_role_arn = data.get("aws", {}).get("assume_role_arn")
+    aws_external_id = data.get("aws", {}).get("external_id")
     s3 = data.get("s3", {})
     hashing = data.get("hashing", {})
     output = data.get("output", {})
@@ -56,11 +61,14 @@ def load_config_yaml(path: Path) -> AppConfig:
     cfg = AppConfig(
         aws_region=aws_region,
         aws_profile=aws_profile,
+        aws_assume_role_arn=aws_assume_role_arn,
+        aws_external_id=aws_external_id,
         s3_bucket=s3["bucket"],
         s3_root_prefix=s3.get("root_prefix", ""),
         hash_mode=hashing.get("mode", "basic"),
         resize_width=int(hashing.get("resize", {}).get("width", 256)),
         resize_height=int(hashing.get("resize", {}).get("height", 256)),
+        max_workers=int(hashing.get("workers", 8)),
         output_target=output.get("target", "local_csv"),
         output_path=Path(output["path"]) if output.get("path") else None,
         state_path=Path(state.get("path", "outputs/state/seen.json")),

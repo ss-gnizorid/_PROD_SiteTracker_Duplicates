@@ -3,8 +3,8 @@ aws:
   profile: null
 
 s3:
-  bucket: "your-bucket-name"
-  root_prefix: "your/root/prefix/"
+  bucket: "prod-sitetracker-image-store"
+  root_prefix: "ODM Duplicate Image/"
 
 hashing:
   mode: "basic"  # or "advanced"

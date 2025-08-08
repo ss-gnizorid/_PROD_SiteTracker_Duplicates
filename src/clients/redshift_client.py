@@ -18,7 +18,7 @@ class RedshiftClient:
             else:
                 cols.append(f'"{col}" VARCHAR(256)')
         sch = f'"{schema}".' if schema else ""
-        create_sql = f"CREATE TABLE IF NOT EXISTS {sch}""{table}"" (" + ", ".join(cols) + ")"
+        create_sql = f"CREATE TABLE IF NOT EXISTS {sch}\"{table}\" (" + ", ".join(cols) + ")"
         with self.engine.begin() as conn:
             conn.execute(text(create_sql))
 
@@ -32,7 +32,7 @@ class RedshiftClient:
         with self.engine.begin() as conn:
             # Delete existing
             param_names = ",".join([f":p{i}" for i in range(len(image_names))])
-            del_sql = text(f"DELETE FROM {sch}""{table}"" WHERE "{key_col}" IN ({param_names})")
+            del_sql = text(f"DELETE FROM {sch}\"{table}\" WHERE \"{key_col}\" IN ({param_names})")
             conn.execute(del_sql, {f"p{i}": v for i, v in enumerate(image_names)})
             # Insert via pandas
             df.to_sql(table, con=conn.connection, schema=schema, if_exists="append", index=False, method="multi")
