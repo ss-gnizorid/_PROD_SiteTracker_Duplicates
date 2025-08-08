@@ -5,6 +5,9 @@ aws:
 s3:
   bucket: "prod-sitetracker-image-store"
   root_prefix: "ODM Duplicate Image/"
+  # Performance settings
+  # max_jobs_to_process: 5  # Set to a number to limit jobs processed (e.g., 10 for testing)
+  timeout_seconds: 300  # 5 minutes timeout for S3 operations
 
 hashing:
   mode: "basic"  # or "advanced"
