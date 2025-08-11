@@ -1,11 +1,14 @@
 from pathlib import Path
+import sys
+
+# Add the project root to Python path for imports
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
 
 import pandas as pd
 
 from src.clients.aws_client import S3Client
-from src.clients.fabric_client import FabricClient
-from src.clients.redshift_client import RedshiftClient
-from src.config.config import AppConfig
+from src.config.config import AppConfig, load_config_yaml
 from src.tools.hash_indexer import HashIndexer
 from src.tools.permutation_generator import PermutationConfig, PermutationGenerator
 from src.utils.io import write_dataframe
@@ -77,37 +80,16 @@ def run_from_config(cfg: AppConfig) -> None:
         else:
             df_all = df_new
 
-        # Output routing
-        if cfg.output_target == "local_csv":
-            if not cfg.output_path:
-                raise ValueError("output_path must be set for local outputs")
-            out = cfg.output_path.with_suffix(".csv")
-            write_dataframe(df_all, out)
-            log.info(f"Wrote index to {out}")
-        elif cfg.output_target == "local_parquet":
-            if not cfg.output_path:
-                raise ValueError("output_path must be set for local outputs")
-            out = cfg.output_path.with_suffix(".parquet")
-            write_dataframe(df_all, out)
-            log.info(f"Wrote index to {out}")
-        elif cfg.output_target == "microsoft_fabric":
-            if not cfg.output_path:
-                raise ValueError("output_path must be set for Microsoft Fabric delivery")
-            FabricClient(cfg.output_path).write(df_all)
-            log.info(f"Delivered index to Fabric landing at {cfg.output_path}")
-        elif cfg.output_target == "aws_redshift":
-            # Expect connection URL and table info via env vars for flexibility
-            import os
+        # Output routing (local only)
+        if not cfg.output_path:
+            raise ValueError("output_path must be set for local outputs")
 
-            conn_url = os.getenv("REDSHIFT_URL")
-            schema = os.getenv("REDSHIFT_SCHEMA") or None
-            table = os.getenv("REDSHIFT_TABLE") or "image_hash_index"
-            if not conn_url:
-                raise ValueError("REDSHIFT_URL environment variable must be set for Redshift output")
-            rs = RedshiftClient(conn_url)
-            rs.ensure_table(schema, table, df_all.head(1) if not df_all.empty else df_all)
-            rs.upsert_dataframe(schema, table, df_all)
-            log.info(f"Upserted {len(df_all)} rows to Redshift {schema or 'public'}.{table}")
+        if cfg.output_target == "local_parquet":
+            out = cfg.output_path.with_suffix(".parquet")
+        else:
+            out = cfg.output_path.with_suffix(".csv")
+        write_dataframe(df_all, out)
+        log.info(f"Wrote index to {out}")
 
         # Update state
         for o in todo:
@@ -121,6 +103,15 @@ def run_from_config(cfg: AppConfig) -> None:
 
 
 if __name__ == "__main__":
-    run(parse_args())
+    # Ensure logging is set up at script level
+    from src.utils.logger import setup_logging
+    setup_logging("INFO")
+    
+    import argparse
+    p = argparse.ArgumentParser(description="Build or update hash index from S3 using YAML config")
+    p.add_argument("--config", type=str, required=False, default=str(Path("configs")/"main_config.yaml"))
+    args = p.parse_args()
+    cfg = load_config_yaml(Path(args.config))
+    run_from_config(cfg)
 
 

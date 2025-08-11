@@ -16,13 +16,9 @@ hashing:
     height: 256
 
 output:
-  target: "local_csv"  # local_csv | local_parquet | microsoft_fabric | aws_redshift
-  path: "outputs/hash_index"  # base path; extension chosen by target
+  target: "local_csv"  # local_csv | local_parquet
+  path: 'C:\Users\George.Nizoridis\OneDrive - Service Stream\Documents - Analytics & Insights Team\02 Telco\Projects\SiteTracker - Duplicate Images\Hash_DB_Store\hash_index.csv'
 
 state:
   path: "outputs/state/seen.json"
-
-duplicates:
-  threshold: 5
-  bands: 8
 

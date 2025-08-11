@@ -58,7 +58,7 @@ class PermutationGenerator:
         perms = self._generate_permutations(base_img)
         result: Dict[str, str] = {}
         for name, img in perms.items():
-            result[f"{name}_hash"] = str(imagehash.average_hash(img))
+            result[f"{name}_hash"] = str(imagehash.phash(img))
         return result
 
 

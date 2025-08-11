@@ -5,7 +5,7 @@ from typing import Literal, Optional
 import yaml
 
 
-OutputTarget = Literal["local_csv", "local_parquet", "microsoft_fabric", "aws_redshift"]
+OutputTarget = Literal["local_csv", "local_parquet"]
 
 
 @dataclass
@@ -26,9 +26,6 @@ class AppConfig:
     # S3 performance settings
     s3_max_jobs_to_process: Optional[int] = None
     s3_timeout_seconds: int = 300
-    # Duplicate scanning
-    duplicate_threshold: int = 5
-    duplicate_bands: int = 8
 
 
 def default_config() -> AppConfig:
@@ -40,8 +37,9 @@ def default_config() -> AppConfig:
         hash_mode="basic",
         resize_width=256,
         resize_height=256,
+        max_workers=8,
         output_target="local_csv",
-        output_path=Path("outputs/hash_index.csv"),
+        output_path=None,
         state_path=Path("outputs/state/seen.json"),
     )
 
@@ -59,7 +57,6 @@ def load_config_yaml(path: Path) -> AppConfig:
     hashing = data.get("hashing", {})
     output = data.get("output", {})
     state = data.get("state", {})
-    dup = data.get("duplicates", {})
 
     cfg = AppConfig(
         aws_region=aws_region,
@@ -77,8 +74,6 @@ def load_config_yaml(path: Path) -> AppConfig:
         output_target=output.get("target", "local_csv"),
         output_path=Path(output["path"]) if output.get("path") else None,
         state_path=Path(state.get("path", "outputs/state/seen.json")),
-        duplicate_threshold=int(dup.get("threshold", 5)),
-        duplicate_bands=int(dup.get("bands", 8)),
     )
     return cfg
 
