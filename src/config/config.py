@@ -26,6 +26,13 @@ class AppConfig:
     # S3 performance settings
     s3_max_jobs_to_process: Optional[int] = None
     s3_timeout_seconds: int = 300
+    # Links generation settings
+    links_enabled: bool = False
+    links_expiry_days: int = 7
+    links_output_target: OutputTarget = "local_parquet"
+    links_output_path: Optional[Path] = None
+    links_state_path: Path = Path("outputs/state/links.json")
+    links_workers: int = 8
 
 
 def default_config() -> AppConfig:
@@ -56,6 +63,7 @@ def load_config_yaml(path: Path) -> AppConfig:
     s3 = data.get("s3", {})
     hashing = data.get("hashing", {})
     output = data.get("output", {})
+    links = data.get("links", {})
     state = data.get("state", {})
 
     cfg = AppConfig(
@@ -74,6 +82,13 @@ def load_config_yaml(path: Path) -> AppConfig:
         output_target=output.get("target", "local_csv"),
         output_path=Path(output["path"]) if output.get("path") else None,
         state_path=Path(state.get("path", "outputs/state/seen.json")),
+        # Links
+        links_enabled=bool(links.get("enabled", False)),
+        links_expiry_days=int(links.get("expiry_days", 7)),
+        links_output_target=links.get("output", {}).get("target", "local_parquet"),
+        links_output_path=Path(links.get("output", {}).get("path")) if links.get("output", {}).get("path") else None,
+        links_state_path=Path(links.get("state_path", "outputs/state/links.json")),
+        links_workers=int(links.get("workers", 8)),
     )
     return cfg
 

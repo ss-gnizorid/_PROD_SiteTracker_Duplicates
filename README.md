@@ -21,6 +21,8 @@ Build a reproducible hash index of images stored in Amazon S3. The index is writ
 - `src/config/config.py`: configuration model and YAML loader
 - `src/utils/state.py`: incremental state store (S3 key + ETag)
 - `src/utils/io.py`: DataFrame writers (CSV/Parquet)
+- `scripts/main/generate_presigned_links.py`: decoupled step to generate presigned URLs
+  (7-day expiry by default) and maintain link state for incremental refreshes
 
 ### Prerequisites
 - Python 3.12+
@@ -65,6 +67,15 @@ output:
 
 state:
   path: "outputs/state/seen.json"
+
+links:
+  enabled: true
+  expiry_days: 7
+  output:
+    target: "local_parquet"   # or "local_csv"
+    path: "outputs/links/link_index.parquet"
+  state_path: "outputs/state/links.json"
+  workers: 16
 ```
 
 Notes
@@ -80,6 +91,11 @@ Notes
 - Or via the main entry:
   ```bash
   python main.py --config configs/main_config.yaml
+  ```
+
+- Generate or refresh presigned links (decoupled step):
+  ```bash
+  python scripts/main/generate_presigned_links.py --config configs/main_config.yaml
   ```
 
 Expected logging
@@ -118,6 +134,12 @@ To increase hash bit-length (e.g., to 256-bit), adjust `src/tools/permutation_ge
 - Change format: set `output.target` to `local_parquet`
 - Force reprocessing: delete the state file configured at `state.path`
 - Control concurrency: adjust `hashing.workers` in YAML (maps to `max_workers`)
+
+Link generation
+- Generates presigned GET URLs with 7-day expiry by default
+- Maintains a separate link state at `links.state_path` for incremental refresh
+- Writes a link index to `links.output.path` with columns:
+  - `image_name`, `presigned_url`, `generated_at`, `expires_at`
 
 ### Troubleshooting
 - No new output / nothing happens: check logs for "No new images to process." Remove the state file to force reprocessing.

@@ -60,6 +60,38 @@ class S3Client:
         self._s3 = self._session.client("s3", region_name=region_name, config=config)
         self._log = get_logger("s3_client")
 
+    def generate_presigned_url(self, bucket: str, key: str, expires_in_seconds: int = 7 * 24 * 3600) -> str:
+        """
+        Generate a presigned GET URL for the specified S3 object.
+
+        Args:
+            bucket: S3 bucket name
+            key: S3 object key
+            expires_in_seconds: Expiry in seconds (default 7 days)
+
+        Returns:
+            A presigned URL as a string.
+        """
+        return self._s3.generate_presigned_url(
+            ClientMethod="get_object",
+            Params={"Bucket": bucket, "Key": key},
+            ExpiresIn=int(expires_in_seconds),
+        )
+
+    def head_object(self, bucket: str, key: str) -> Optional[Dict]:
+        """
+        Lightweight existence/metadata check for an object. Returns None if not found.
+        """
+        try:
+            return self._s3.head_object(Bucket=bucket, Key=key)
+        except self._s3.exceptions.NoSuchKey:
+            return None
+        except botocore.exceptions.ClientError as e:
+            code = e.response.get("Error", {}).get("Code")
+            if code in {"404", "NoSuchKey", "NotFound"}:
+                return None
+            raise
+
     def iter_job_prefixes(self, bucket: str, root_prefix: str) -> Iterator[str]:
         """
         Yields job-level prefixes immediately under the provided root prefix, using delimiter '/'.

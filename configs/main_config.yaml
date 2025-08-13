@@ -22,3 +22,12 @@ output:
 state:
   path: "outputs/state/seen.json"
 
+links:
+  enabled: true
+  expiry_days: 7
+  output:
+    target: "local_parquet"
+    path: "outputs/links/link_index.parquet"
+  state_path: "outputs/state/links.json"
+  workers: 16
+
