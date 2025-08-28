@@ -86,7 +86,18 @@ def run_from_config(cfg: AppConfig) -> None:
         except Exception:
             df_all = df_new
     else:
-        df_all = df_new
+        # If switching formats and no new links, reuse the alternate format file to avoid empty output
+        alt = out.with_suffix(".csv" if out.suffix.lower() == ".parquet" else ".parquet")
+        if df_new.empty and alt.exists():
+            try:
+                if alt.suffix.lower() == ".csv":
+                    df_all = pd.read_csv(alt)
+                else:
+                    df_all = pd.read_parquet(alt)
+            except Exception:
+                df_all = df_new
+        else:
+            df_all = df_new
 
     write_dataframe(df_all, out)
     log.info(f"Wrote link index to {out}")

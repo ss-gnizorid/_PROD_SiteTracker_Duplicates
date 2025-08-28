@@ -17,11 +17,12 @@ class S3Object:
     last_modified: str
     job_number: str
     job_url: Optional[str]
+    job_id: Optional[str]
 
 
 class S3Client:
     """
-    Thin wrapper around boto3 S3 for listing job folders, reading url.txt, and streaming image bytes.
+    Thin wrapper around boto3 S3 for listing job folders, reading job_data.txt (legacy: url.txt), and streaming image bytes.
     Credentials resolution is delegated to the default AWS chain (env vars, profile, role, etc.).
     """
 
@@ -96,10 +97,15 @@ class S3Client:
         """
         Yields job-level prefixes immediately under the provided root prefix, using delimiter '/'.
         """
-        if root_prefix and not root_prefix.endswith("/"):
-            root_prefix = root_prefix + "/"
+        # Handle empty root prefix case (job folders directly in bucket root)
+        if not root_prefix or root_prefix.strip() == "":
+            root_prefix = ""
+            self._log.info(f"Listing job prefixes directly in bucket root: s3://{bucket}/")
+        else:
+            if not root_prefix.endswith("/"):
+                root_prefix = root_prefix + "/"
+            self._log.info(f"Listing job prefixes in s3://{bucket}/{root_prefix}")
         
-        self._log.info(f"Listing job prefixes in s3://{bucket}/{root_prefix}")
         paginator = self._s3.get_paginator("list_objects_v2")
         
         try:
@@ -133,6 +139,25 @@ class S3Client:
         body = obj["Body"].read()
         return body.decode(encoding)
 
+    def get_job_metadata(self, bucket: str, job_prefix: str) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Return (job_url, job_id) for a job folder.
+        Prefers reading from job_data.txt where line 1 is URL and line 2 is Job ID.
+        Falls back to legacy url.txt (URL only) if job_data.txt is not present.
+        """
+        if not job_prefix.endswith("/"):
+            job_prefix += "/"
+        data_key = f"{job_prefix}job_data.txt"
+        content = self.read_text_object(bucket, data_key)
+        if content:
+            lines = content.splitlines()
+            job_url = lines[0].strip() if len(lines) >= 1 and lines[0] is not None else None
+            job_id = lines[1].strip() if len(lines) >= 2 and lines[1] is not None else None
+            return job_url, job_id
+
+        # Legacy fallback: url.txt provides only the URL
+        return self.get_job_url(bucket, job_prefix), None
+
     def get_job_url(self, bucket: str, job_prefix: str) -> Optional[str]:
         if not job_prefix.endswith("/"):
             job_prefix += "/"
@@ -144,7 +169,7 @@ class S3Client:
 
     def iter_images_in_job(self, bucket: str, job_prefix: str) -> Iterator[Tuple[str, Dict]]:
         """
-        Yields (key, object_summary_dict) for each object under job_prefix excluding the url.txt.
+        Yields (key, object_summary_dict) for each object under job_prefix excluding metadata files (url.txt, job_data.txt).
         """
         if not job_prefix.endswith("/"):
             job_prefix += "/"
@@ -160,10 +185,14 @@ class S3Client:
                 
                 for obj in page.get("Contents", []):
                     key = obj["Key"]
-                    if key.endswith("url.txt"):
+                    if key.endswith("url.txt") or key.endswith("job_data.txt"):
                         continue
                     # Filter out folder placeholders
                     if key.endswith("/"):
+                        continue
+                    # Filter out macOS resource forks and __MACOSX folders
+                    basename = key.rsplit("/", 1)[-1]
+                    if "/__MACOSX/" in key or basename.startswith("._"):
                         continue
                     yield key, obj
                     
@@ -184,7 +213,7 @@ class S3Client:
     ) -> List[S3Object]:
         """
         Returns metadata for all images under root_prefix, capturing job_number from the top-level folder
-        and job_url from that folder's url.txt.
+        and job_url/job_id from that folder's job_data.txt (fallback to url.txt for URL only).
         
         Args:
             bucket: S3 bucket name
@@ -207,7 +236,7 @@ class S3Client:
                 
                 # job_number is the last component without trailing slash
                 job_number = job_prefix.rstrip("/").split("/")[-1]
-                job_url = self.get_job_url(bucket, job_prefix)
+                job_url, job_id = self.get_job_metadata(bucket, job_prefix)
                 
                 image_count = 0
                 for key, meta in self.iter_images_in_job(bucket, job_prefix):
@@ -228,6 +257,7 @@ class S3Client:
                             last_modified=str(meta.get("LastModified", "")),
                             job_number=job_number,
                             job_url=job_url,
+                            job_id=job_id,
                         )
                     )
                 

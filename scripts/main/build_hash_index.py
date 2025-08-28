@@ -11,7 +11,7 @@ from src.clients.aws_client import S3Client
 from src.config.config import AppConfig, load_config_yaml
 from src.tools.hash_indexer import HashIndexer
 from src.tools.permutation_generator import PermutationConfig, PermutationGenerator
-from src.utils.io import write_dataframe
+from src.utils.io import write_dataframe, append_dataframe
 from src.utils.state import IncrementalState
 from src.utils.logger import get_logger
 
@@ -60,42 +60,71 @@ def run_from_config(cfg: AppConfig) -> None:
 
         gen = PermutationGenerator(PermutationConfig(resize=(cfg.resize_width, cfg.resize_height), mode=cfg.hash_mode))
         indexer = HashIndexer(s3=s3, generator=gen, max_workers=cfg.max_workers)
-        log.info(f"Starting hashing with max_workers={cfg.max_workers} mode={cfg.hash_mode}")
-        df_new = indexer.build_dataframe(todo)
-        log.info(f"Hashed {len(df_new)} images to permutations")
 
-        # Load existing if present and append for idempotent output
-        if cfg.output_path and cfg.output_path.exists():
-            try:
-                if cfg.output_path.suffix.lower() == ".csv":
-                    df_old = pd.read_csv(cfg.output_path)
-                else:
-                    df_old = pd.read_parquet(cfg.output_path)
-                # De-dup on image_name in case of reprocessing
-                df_all = pd.concat([df_old, df_new], ignore_index=True)
-                df_all = df_all.sort_values("image_name").drop_duplicates(subset=["image_name"], keep="last")
-            except Exception as e:
-                log.warning(f"Failed to load existing index at {cfg.output_path}: {e}")
-                df_all = df_new
-        else:
-            df_all = df_new
-
-        # Output routing (local only)
+        # Resolve output path now and enforce CSV for append mode
         if not cfg.output_path:
             raise ValueError("output_path must be set for local outputs")
+        out = (cfg.output_path.with_suffix(".parquet") if cfg.output_target == "local_parquet" else cfg.output_path.with_suffix(".csv"))
+        if out.suffix.lower() != ".csv":
+            raise ValueError("Batch append mode requires CSV output. Set output.target to 'local_csv'.")
 
-        if cfg.output_target == "local_parquet":
-            out = cfg.output_path.with_suffix(".parquet")
-        else:
-            out = cfg.output_path.with_suffix(".csv")
-        write_dataframe(df_all, out)
-        log.info(f"Wrote index to {out}")
+        # Process in batches and checkpoint state after each batch
+        batch_size = 1000
+        total = len(todo)
+        processed_total = 0
+        log.info(f"Starting hashing in batches of {batch_size} with max_workers={cfg.max_workers} mode={cfg.hash_mode}")
 
-        # Update state
-        for o in todo:
-            state.mark_processed(o.key, o.etag)
-        state.save(cfg.state_path)
-        log.info(f"Updated state at {cfg.state_path}")
+        total_success = 0
+        total_failed = 0
+        for start in range(0, total, batch_size):
+            end = min(start + batch_size, total)
+            batch = todo[start:end]
+            log.info(f"Processing batch {start//batch_size + 1} ({start+1}-{end} of {total})")
+
+            # Build dataframe for this batch
+            df_batch = indexer.build_dataframe(batch)
+            batch_success = len(df_batch)
+            failures = indexer.drain_failures()
+            batch_failed = len(failures)
+            total_success += batch_success
+            total_failed += batch_failed
+            log.info(f"Batch completed: success={batch_success}, failed={batch_failed}")
+
+            # Append to CSV immediately
+            if not df_batch.empty:
+                append_dataframe(df_batch, out)
+                processed_total += len(df_batch)
+
+            # Append failures to a sidecar CSV
+            if failures:
+                from pandas import DataFrame
+                err_out = out.with_name(out.stem + "_errors").with_suffix(".csv")
+                append_dataframe(DataFrame(failures), err_out)
+
+            # Update incremental state only for successfully processed keys
+            key_to_etag = {o.key: o.etag for o in batch}
+            for key in df_batch.get("image_name", []):
+                etag = key_to_etag.get(key)
+                if etag:
+                    state.mark_processed(key, etag)
+            state.save(cfg.state_path)
+            log.info(f"Checkpoint saved to {cfg.state_path} (processed so far: {processed_total}/{total})")
+
+        # Final deduplication pass to ensure unique image_name rows (handles any restarts)
+        try:
+            df_all = pd.read_csv(out)
+            before = len(df_all)
+            df_all = df_all.sort_values("image_name").drop_duplicates(subset=["image_name"], keep="last")
+            after = len(df_all)
+            if after != before:
+                write_dataframe(df_all, out)
+                log.info(f"Final dedup pass removed {before - after} duplicate rows. Wrote consolidated file to {out}")
+            else:
+                log.info("Final dedup pass found no duplicates")
+        except Exception as e:
+            log.warning(f"Final dedup skipped due to error reading {out}: {e}")
+
+        log.info(f"Completed hashing. success={total_success}, failed={total_failed}, written={processed_total}. Output: {out}")
         
     except Exception as e:
         log.error(f"Failed to build hash index: {e}")

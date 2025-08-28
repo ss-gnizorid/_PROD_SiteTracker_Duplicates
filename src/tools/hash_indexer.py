@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 from dataclasses import dataclass
 from typing import Dict, Iterable, List
 
@@ -13,6 +14,7 @@ from src.utils.logger import get_logger
 class HashRecord:
     image_name: str
     job_number: str
+    job_id: str | None
     job_url: str | None
     hashes: Dict[str, str]
 
@@ -20,6 +22,7 @@ class HashRecord:
         row: Dict[str, str] = {
             "image_name": self.image_name,
             "job_number": self.job_number,
+            "job_id": self.job_id or "",
             "job_url": self.job_url or "",
         }
         row.update(self.hashes)
@@ -32,11 +35,13 @@ class HashIndexer:
         self._generator = generator
         self._max_workers = max_workers
         self._log = get_logger("hash_indexer")
+        self._failures_lock = threading.Lock()
+        self._failures: List[Dict[str, str]] = []
 
     def _process_one(self, obj: S3Object) -> HashRecord:
         image_bytes = self._s3.stream_bytes(obj.bucket, obj.key)
         hashes = self._generator.hashes_for_image(image_bytes)
-        return HashRecord(image_name=obj.key, job_number=obj.job_number, job_url=obj.job_url, hashes=hashes)
+        return HashRecord(image_name=obj.key, job_number=obj.job_number, job_id=obj.job_id, job_url=obj.job_url, hashes=hashes)
 
     def build_dataframe(self, objects: List[S3Object]) -> pd.DataFrame:
         records: List[HashRecord] = []
@@ -49,11 +54,24 @@ class HashIndexer:
                 except Exception as e:
                     obj = futures[fut]
                     self._log.warning(f"Failed to process {obj.key}: {e}")
+                    with self._failures_lock:
+                        self._failures.append({
+                            "image_name": obj.key,
+                            "job_number": obj.job_number,
+                            "error": str(e),
+                        })
         rows = [r.to_row() for r in records]
         df = pd.DataFrame(rows)
         # Ensure consistent column ordering: meta first then hashes
-        meta_cols = ["image_name", "job_number", "job_url"]
+        meta_cols = ["image_name", "job_number", "job_id", "job_url"]
         hash_cols = sorted([c for c in df.columns if c.endswith("_hash")])
         return df[meta_cols + hash_cols]
+
+    def drain_failures(self) -> List[Dict[str, str]]:
+        """Return and clear the list of failures captured during the last build."""
+        with self._failures_lock:
+            out = list(self._failures)
+            self._failures.clear()
+            return out
 
 

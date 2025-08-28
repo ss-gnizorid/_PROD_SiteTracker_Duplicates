@@ -4,7 +4,7 @@ Build a reproducible hash index of images stored in Amazon S3. The index is writ
 
 ### Key capabilities
 - Enumerates jobs under an S3 root prefix and streams image content
-- Extracts job metadata (`job_number`, optional `job_url` from `url.txt` per job folder)
+- Extracts job metadata (`job_number`, optional `job_id` and `job_url` from `job_data.txt` per job folder; legacy `url.txt` supported for URL-only)
 - Generates robust perceptual hashes (phash) across simple permutations
 - Writes a deduplicated index locally (CSV/Parquet)
 - Maintains incremental state to process only new/changed images on subsequent runs
@@ -112,7 +112,8 @@ The index is written to the configured `output.path` with the chosen format:
 Schema (columns)
 - `image_name` (string): S3 object key
 - `job_number` (string): last folder segment under the root prefix
-- `job_url` (string): contents of `<job_prefix>/url.txt`, if present; otherwise empty
+- `job_id` (string): second line of `<job_prefix>/job_data.txt`, if present; otherwise empty
+- `job_url` (string): first line of `<job_prefix>/job_data.txt` or legacy `<job_prefix>/url.txt`, if present; otherwise empty
 - Hash columns (strings, hex-encoded):
   - `original_hash`
   - `h_flip_hash`
