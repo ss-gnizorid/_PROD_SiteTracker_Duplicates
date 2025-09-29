@@ -8,12 +8,14 @@ s3:
   # Performance settings
   # max_jobs_to_process: 5  # Set to a number to limit jobs processed (e.g., 10 for testing)
   timeout_seconds: 300  # 5 minutes timeout for S3 operations
+  max_pool_connections: 128  # Increase botocore connection pool size
 
 hashing:
   mode: "basic"  # or "advanced"
   resize:
     width: 256
     height: 256
+  workers: 32  # Boosted concurrency for local CPU processing
 
 output:
   target: "local_csv"  # local_csv | local_parquet

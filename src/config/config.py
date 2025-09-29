@@ -26,6 +26,7 @@ class AppConfig:
     # S3 performance settings
     s3_max_jobs_to_process: Optional[int] = None
     s3_timeout_seconds: int = 300
+    s3_max_pool_connections: int = 64
     # Links generation settings
     links_enabled: bool = False
     links_expiry_days: int = 7
@@ -75,6 +76,7 @@ def load_config_yaml(path: Path) -> AppConfig:
         s3_root_prefix=s3.get("root_prefix", ""),
         s3_max_jobs_to_process=s3.get("max_jobs_to_process"),
         s3_timeout_seconds=int(s3.get("timeout_seconds", 300)),
+        s3_max_pool_connections=int(s3.get("max_pool_connections", 64)),
         hash_mode=hashing.get("mode", "basic"),
         resize_width=int(hashing.get("resize", {}).get("width", 256)),
         resize_height=int(hashing.get("resize", {}).get("height", 256)),

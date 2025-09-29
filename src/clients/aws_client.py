@@ -32,6 +32,7 @@ class S3Client:
         profile_name: Optional[str] = None,
         assume_role_arn: Optional[str] = None,
         external_id: Optional[str] = None,
+        max_pool_connections: Optional[int] = None,
     ):
         base_session = boto3.Session(profile_name=profile_name)
         if assume_role_arn:
@@ -56,7 +57,8 @@ class S3Client:
         config = botocore.config.Config(
             connect_timeout=30,  # 30 seconds to establish connection
             read_timeout=60,     # 60 seconds to read response
-            retries={'max_attempts': 3}  # Retry failed requests up to 3 times
+            retries={'max_attempts': 3},  # Retry failed requests up to 3 times
+            max_pool_connections=(max_pool_connections or 64),
         )
         self._s3 = self._session.client("s3", region_name=region_name, config=config)
         self._log = get_logger("s3_client")

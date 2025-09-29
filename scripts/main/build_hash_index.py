@@ -26,6 +26,7 @@ def run_from_config(cfg: AppConfig) -> None:
             profile_name=cfg.aws_profile,
             assume_role_arn=cfg.aws_assume_role_arn,
             external_id=cfg.aws_external_id,
+            max_pool_connections=cfg.s3_max_pool_connections,
         )
 
         # Incremental state
@@ -69,7 +70,7 @@ def run_from_config(cfg: AppConfig) -> None:
             raise ValueError("Batch append mode requires CSV output. Set output.target to 'local_csv'.")
 
         # Process in batches and checkpoint state after each batch
-        batch_size = 1000
+        batch_size = 500
         total = len(todo)
         processed_total = 0
         log.info(f"Starting hashing in batches of {batch_size} with max_workers={cfg.max_workers} mode={cfg.hash_mode}")
